@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gesture Stage</title>
+<style>
+  :root {
+    --bg: #0e0f13;
+    --panel: #181a21;
+    --line: #2a2d38;
+    --text: #eceef4;
+    --muted: #8b90a0;
+    --accent: #ff5a36;
+    --accent-2: #ffb020;
+    --ok: #3ddc97;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: "Pretendard", "Malgun Gothic", system-ui, sans-serif;
+    display: flex; flex-direction: column; align-items: center; padding: 24px 16px;
+  }
+  h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: .02em; }
+  .sub { margin: 0 0 18px; color: var(--muted); font-size: 14px; }
+  .layout { display: flex; gap: 18px; width: 100%; max-width: 1100px; flex-wrap: wrap; justify-content: center; }
+
+  .stage {
+    position: relative; flex: 1 1 640px; max-width: 760px; aspect-ratio: 4 / 3;
+    background: #000; border-radius: 16px; overflow: hidden; border: 1px solid var(--line);
+  }
+  .stage canvas { width: 100%; height: 100%; display: block; }
+  .stage video { display: none; }
+
+  .overlay {
+    position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+  }
+  .badge { opacity: 0; transform: scale(.4) rotate(-8deg); transition: opacity .18s, transform .35s cubic-bezier(.2, 1.6, .4, 1); }
+  .badge.show { opacity: 1; transform: scale(1) rotate(0); }
+  .badge.fist { width: min(46%, 320px); filter: drop-shadow(0 12px 40px rgba(255, 90, 54, .55)); }
+  .badge.ok {
+    position: absolute; font-size: min(26vw, 220px); line-height: 1;
+    filter: drop-shadow(0 10px 40px rgba(61, 220, 151, .6));
+  }
+  .badge.show.fist { animation: punch 1.2s ease-in-out .35s infinite; }
+  .badge.show.ok { animation: wiggle 1.4s ease-in-out .35s infinite; }
+  @keyframes punch { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+  @keyframes wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+
+  .loading {
+    position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+    background: rgba(0, 0, 0, .75); font-size: 15px; color: var(--muted); padding: 16px;
+  }
+  .loading.hidden { display: none; }
+
+  .panel {
+    flex: 0 1 300px; min-width: 260px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 16px; padding: 18px; align-self: flex-start;
+  }
+  .now { font-size: 13px; color: var(--muted); }
+  .now strong { display: block; font-size: 40px; color: var(--text); margin: 2px 0 14px; }
+  .bar { margin-bottom: 10px; font-size: 13px; }
+  .bar .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .bar .track { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; }
+  .bar .fill { height: 100%; width: 0; background: var(--muted); border-radius: 99px; transition: width .08s linear; }
+  .bar.FIST .fill { background: var(--accent); }
+  .bar.OK .fill { background: var(--ok); }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+  label span { float: right; color: var(--text); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .hint { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 0; }
+  .fps { position: absolute; top: 10px; left: 12px; font-size: 12px; color: #fff; opacity: .7; }
+
+  @media (max-width: 720px) {
+    .panel { flex-basis: 100%; }
+    .now strong { font-size: 30px; }
+  }
+</style>
+</head>
+<body>
+  <h1>Gesture Stage</h1>
+  <p class="sub">✊ 주먹을 쥐면 FIST 로고, 👌 OK를 하면 OK 이모지가 나타나요</p>
+
+  <div class="layout">
+    <div class="stage">
+      <video id="video" playsinline muted></video>
+      <canvas id="canvas" width="640" height="480"></canvas>
+      <div class="fps" id="fps"></div>
+
+      <div class="overlay">
+        <!-- FIST logo -->
+        <svg class="badge fist" id="fistBadge" viewBox="0 0 240 240" aria-label="FIST">
+          <defs>
+            <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#ffb020"/>
+              <stop offset="1" stop-color="#ff3d2e"/>
+            </linearGradient>
+          </defs>
+          <circle cx="120" cy="120" r="112" fill="url(#g)"/>
+          <circle cx="120" cy="120" r="100" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="3" stroke-dasharray="6 7"/>
+          <text x="120" y="118" text-anchor="middle" font-size="84">✊</text>
+          <text x="120" y="186" text-anchor="middle" font-family="Impact, 'Arial Black', sans-serif"
+                font-size="50" font-weight="900" fill="#fff" letter-spacing="6">FIST</text>
+        </svg>
+        <!-- OK emoji -->
+        <div class="badge ok" id="okBadge" aria-label="OK">👌</div>
+      </div>
+
+      <div class="loading" id="loading">모델을 불러오는 중...</div>
+    </div>
+
+    <aside class="panel">
+      <div class="now">현재 제스처<strong id="current">-</strong></div>
+      <div id="bars"></div>
+      <hr>
+      <label>확신도 기준 <span id="thVal">0.70</span>
+        <input type="range" id="threshold" min="0.3" max="0.99" step="0.01" value="0.7">
+      </label>
+      <label>흔들림 보정 (프레임) <span id="smVal">5</span>
+        <input type="range" id="smooth" min="1" max="15" step="1" value="5">
+      </label>
+      <p class="hint">모델: 직접 수집한 데이터로 학습한 MLP 분류기<br>
+        (models/gesture_clf.joblib → web/gesture_model.json)</p>
+    </aside>
+  </div>
+
+<script type="module">
+import { FilesetResolver, HandLandmarker, DrawingUtils }
+  from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.0/vision_bundle.mjs";
+
+const $ = (id) => document.getElementById(id);
+const video = $("video"), canvas = $("canvas"), ctx = canvas.getContext("2d");
+const loading = $("loading");
+
+// ---------- trained classifier (StandardScaler + MLP), same math as scikit-learn
+const model = await fetch("gesture_model.json").then((r) => r.json());
+
+function predict(features) {
+  let h = features.map((v, i) => (v - model.mean[i]) / model.scale[i]);
+  model.weights.forEach((W, layer) => {
+    const out = model.biases[layer].slice();
+    for (let i = 0; i < h.length; i++) {
+      const hi = h[i], Wi = W[i];
+      for (let j = 0; j < out.length; j++) out[j] += hi * Wi[j];
+    }
+    const last = layer === model.weights.length - 1;
+    h = last ? out : out.map((v) => Math.max(0, v));   // ReLU on hidden layers
+  });
+  if (model.out_activation === "softmax") {
+    const m = Math.max(...h), e = h.map((v) => Math.exp(v - m)), s = e.reduce((a, b) => a + b);
+    return e.map((v) => v / s);
+  }
+  const p = 1 / (1 + Math.exp(-h[0]));                  // binary (2 classes): logistic
+  return [1 - p, p];
+}
+
+// Same normalization as gesture_common.landmarks_to_features()
+function toFeatures(landmarks, handedness) {
+  const w = landmarks[0];
+  const pts = landmarks.map((p) => [p.x - w.x, p.y - w.y, p.z - w.z]);
+  const scale = Math.max(...pts.map(([x, y]) => Math.hypot(x, y))) || 1;
+  return pts.flatMap(([x, y, z]) => [(handedness === "Left" ? -x : x) / scale, y / scale, z / scale]);
+}
+
+// ---------- probability bars
+const bars = {};
+for (const name of model.classes) {
+  const el = document.createElement("div");
+  el.className = `bar ${name}`;
+  el.innerHTML = `<div class="row"><span>${name}</span><span>0.00</span></div>
+                  <div class="track"><div class="fill"></div></div>`;
+  $("bars").appendChild(el);
+  bars[name] = { fill: el.querySelector(".fill"), val: el.querySelectorAll("span")[1] };
+}
+function setBars(proba) {
+  model.classes.forEach((name, i) => {
+    const p = proba ? proba[i] : 0;
+    bars[name].fill.style.width = `${p * 100}%`;
+    bars[name].val.textContent = p.toFixed(2);
+  });
+}
+
+// ---------- settings
+const threshold = $("threshold"), smooth = $("smooth");
+threshold.oninput = () => ($("thVal").textContent = (+threshold.value).toFixed(2));
+smooth.oninput = () => ($("smVal").textContent = smooth.value);
+
+// ---------- MediaPipe Hand Landmarker
+const vision = await FilesetResolver.forVisionTasks(
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.0/wasm");
+const landmarker = await HandLandmarker.createFromOptions(vision, {
+  baseOptions: { modelAssetPath: "../hand_landmarker.task", delegate: "GPU" },
+  runningMode: "VIDEO",
+  numHands: 1,
+});
+const draw = new DrawingUtils(ctx);
+
+loading.textContent = "카메라 권한을 허용해 주세요";
+try {
+  video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+  await video.play();
+} catch (e) {
+  loading.textContent = `카메라를 열 수 없어요: ${e.message}`;
+  throw e;
+}
+canvas.width = video.videoWidth;
+canvas.height = video.videoHeight;
+loading.classList.add("hidden");
+
+// ---------- main loop
+const history = [];
+let shown = null, lastTs = -1, lastFrame = performance.now();
+
+function show(name) {
+  if (name === shown) return;
+  shown = name;
+  $("fistBadge").classList.toggle("show", name === "FIST");
+  $("okBadge").classList.toggle("show", name === "OK");
+}
+
+function loop() {
+  // Draw the mirrored frame first and detect on it, exactly like the Python apps
+  ctx.save();
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  ctx.restore();
+
+  const ts = Math.max(performance.now(), lastTs + 1);
+  lastTs = ts;
+  const result = landmarker.detectForVideo(canvas, ts);
+
+  let label = null, proba = null;
+  if (result.landmarks.length) {
+    const lms = result.landmarks[0];
+    draw.drawConnectors(lms, HandLandmarker.HAND_CONNECTIONS, { color: "#3ddc97", lineWidth: 3 });
+    draw.drawLandmarks(lms, { color: "#ff5a36", lineWidth: 1, radius: 3 });
+
+    proba = predict(toFeatures(lms, result.handedness[0][0].categoryName));
+    const best = proba.indexOf(Math.max(...proba));
+    label = proba[best] >= +threshold.value ? model.classes[best] : "?";
+  }
+
+  // majority vote over the last N frames to avoid flicker
+  history.push(label);
+  while (history.length > +smooth.value) history.shift();
+  const counts = {};
+  for (const l of history) counts[l] = (counts[l] || 0) + 1;
+  const voted = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+  const stable = voted === "null" ? null : voted;
+
+  $("current").textContent = stable ?? "-";
+  setBars(proba);
+  show(stable);
+
+  const now = performance.now();
+  $("fps").textContent = `${(1000 / (now - lastFrame)).toFixed(0)} FPS`;
+  lastFrame = now;
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
